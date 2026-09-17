@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>مغامرة القفزة | Ahmed Selka</title>
+<style>
+*{box-sizing:border-box} body{margin:0;background:#111827;color:white;font-family:system-ui,Arial;display:flex;justify-content:center;min-height:100vh}
+.wrap{width:min(100%,1000px);padding:14px}.top{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+h1{font-size:22px;margin:0}.info{display:flex;gap:14px;font-weight:700}.game{position:relative;overflow:hidden;border:3px solid #fff;border-radius:14px;background:#72d7ff;box-shadow:0 12px 35px #0008}
+canvas{display:block;width:100%;height:auto;image-rendering:auto}.hint{text-align:center;color:#cbd5e1;margin:9px 0 0;font-size:14px}
+button{border:0;border-radius:10px;padding:9px 14px;font-weight:800;cursor:pointer;background:#fbbf24;color:#111827}
+.controls{display:flex;justify-content:center;gap:12px;margin-top:10px;direction:ltr}.ctrl{width:62px;height:52px;font-size:22px;background:#334155;color:white;touch-action:none}
+@media(min-width:700px){.controls{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="menu" style="position:fixed;inset:0;background:linear-gradient(#0f172a,#1e3a5f);z-index:10;display:flex;align-items:center;justify-content:center;padding:20px">
+    <div style="width:min(520px,100%);background:#111827;border:2px solid #475569;border-radius:22px;padding:28px;text-align:center;box-shadow:0 20px 60px #0008">
+      <div style="font-size:58px">⭐ 🏃 ⭐</div>
+      <h1 style="font-size:36px;margin:8px 0">مغامرة القفزة</h1><div style="color:#fbbf24;font-weight:800">Designed & Developed by Ahmed Selka</div>
+      <p style="color:#cbd5e1">اجمع العملات والنجوم، اهزم الأعداء، وأنهِ 3 مراحل!</p>
+      <div style="margin:18px 0">
+        <b>اختر شخصيتك</b>
+        <div id="chars" style="display:flex;justify-content:center;gap:10px;margin-top:12px">
+          <button class="char" data-char="blue" style="font-size:28px;padding:12px 20px">🔵</button>
+          <button class="char" data-char="green" style="font-size:28px;padding:12px 20px">🟢</button>
+          <button class="char" data-char="yellow" style="font-size:28px;padding:12px 20px">🟡</button>
+        </div>
+      </div>
+      <button id="start" style="font-size:20px;padding:13px 35px">▶ ابدأ اللعبة</button>
+      <p style="font-size:12px;color:#94a3b8;margin-bottom:0">© 2026 Ahmed Selka — All Rights Reserved</p>
+    </div>
+  </div>
+  <div class="top">
+    <h1>⭐ مغامرة القفزة</h1>
+    <div class="info"><span>النقاط: <b id="score">0</b></span><span>القلوب: <b id="lives">3</b></span><span>المرحلة: <b id="level">1</b></span><span>🪙 <b id="coins">0</b></span><span>🏆 <b id="best">0</b></span><button id="pause">⏸</button><button id="sound">🔊</button><button id="restart">إعادة</button></div>
+  </div>
+  <div class="game"><canvas id="c" width="960" height="540"></canvas></div>
+  <div class="controls"><button class="ctrl" data-k="left">◀</button><button class="ctrl" data-k="jump">▲</button><button class="ctrl" data-k="right">▶</button></div>
+  <p class="hint">التحكم: ← → للحركة، Space للقفز. اجمع النجوم وتجنب الأعداء.</p>
+</div>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+const W=c.width,H=c.height; let cameraX=0, best=Number(localStorage.getItem('alqafza_best')||0), power='none', powerTimer=0, checkpointX=70;
+const keys={left:false,right:false}; let jump=false,score=0,lives=3,win=false,gameOver=false,paused=false,level=1,coins=0,bossHp=5,muted=false;
+let audioCtx=null,character='blue';
+const colors={blue:'#2563eb',green:'#16a34a',yellow:'#eab308'};
+const player={x:70,y:430,w:32,h:42,vx:0,vy:0,on:false};
+const platforms=[
+ {x:0,y:500,w:960,h:40},{x:140,y:420,w:150,h:20},{x:350,y:350,w:140,h:20},
+ {x:560,y:430,w:150,h:20},{x:760,y:320,w:140,h:20},{x:900,y:410,w:60,h:20}
+];
+const stars=[{x:205,y:380,t:0},{x:410,y:310,t:0},{x:625,y:390,t:0},{x:815,y:280,t:0},{x:930,y:370,t:0}];
+const enemies=[{x:470,y:315,w:30,h:35,v:1.2,min:350,max:460},{x:650,y:395,w:30,h:35,v:1,min:560,max:680}];
+const goal={x:2940,y:250,w:12,h:70};
+let coinsList=[
+ {x:170,y:385},{x:235,y:385},{x:380,y:315},{x:440,y:315},
+ {x:590,y:395},{x:650,y:395},{x:790,y:285},{x:850,y:285}
+];
+let boss={x:850,y:250,w:48,h:60,v:1.1,min:780,max:900,active:false};
+let powerups=[{x:1120,y:405,type:'⭐',got:false},{x:1815,y:285,type:'⚡',got:false},{x:2600,y:405,type:'❤️',got:false}];
+let blocks=[{x:1180,y:350,w:38,h:38},{x:1410,y:290,w:38,h:38},{x:1670,y:370,w:38,h:38},{x:2140,y:340,w:38,h:38},{x:2700,y:370,w:38,h:38}];
+
+function beep(freq=440,dur=.08){
+ if(muted)return;
+ try{audioCtx??=new (window.AudioContext||window.webkitAudioContext)();let o=audioCtx.createOscillator(),g=audioCtx.createGain();
+ o.frequency.value=freq;o.type='square';g.gain.value=.035;o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+dur)}catch(e){}
+}
+function reset(){score=0;lives=3;coins=0;level=1;bossHp=5;win=gameOver=false;paused=false;cameraX=0;power='none';powerTimer=0;checkpointX=70;player.x=70;player.y=430;player.vx=player.vy=0;stars.forEach(s=>s.got=false);coinsList.forEach(c=>c.got=false);powerups.forEach(q=>q.got=false);enemies[0].x=470;enemies[1].x=650;boss.active=false;hud()}
+function hud(){if(score>best){best=score;localStorage.setItem('alqafza_best',best)}document.getElementById('score').textContent=score;document.getElementById('lives').textContent=lives;document.getElementById('level').textContent=level;document.getElementById('coins').textContent=coins;document.getElementById('best').textContent=best}
+function hud(){if(score>best){best=score;localStorage.setItem('alqafza_best',best)}document.getElementById('score').textContent=score;document.getElementById('lives').textContent=lives}
+function rect(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
+function circleStar(s){x.save();x.translate(s.x,s.y);x.rotate(s.t);x.fillStyle='#ffe45c';x.beginPath();for(let i=0;i<10;i++){let r=i%2?7:16,ang=-Math.PI/2+i*Math.PI/5;x.lineTo(Math.cos(ang)*r,Math.sin(ang)*r)}x.closePath();x.fill();x.restore()}
+function update(){
+ if(win||gameOver||paused)return;
+ player.vx=(keys.right?4.2:0)-(keys.left?4.2:0); player.vy+=.55;
+ if(jump&&player.on){player.vy=power==='jump'?-14:-11;player.on=false} jump=false;
+ player.x+=player.vx; player.x=Math.max(0,Math.min(3020-player.w,player.x)); cameraX=Math.max(0,Math.min(3020-W,player.x-280));
+ let oldY=player.y;player.y+=player.vy;player.on=false;
+ for(const p of platforms){
+   if(player.x+player.w>p.x&&player.x<p.x+p.w&&oldY+player.h<=p.y&&player.y+player.h>=p.y&&player.vy>=0){player.y=p.y-player.h;player.vy=0;player.on=true}
+ }
+ for(const s of stars){s.t+=.04;if(!s.got&&Math.hypot((player.x+16)-s.x,(player.y+20)-s.y)<27){s.got=true;score+=10;beep(880);hud()}}
+ for(const e of enemies){
+   e.x+=e.v;if(e.x<e.min||e.x>e.max)e.v*=-1;
+   if(rect(player,e)){
+     if(player.vy>0&&player.y+player.h-e.y<18){score+=20;e.x=e.min;player.vy=-8;hud()}
+     else{lives--;hud();player.x=checkpointX;player.y=430;player.vy=0;if(lives<=0)gameOver=true}
+   }
+ }
+ for(const q of powerups){if(!q.got&&Math.hypot(player.x+16-q.x,player.y+20-q.y)<28){q.got=true;
+ power=q.type==='⚡'?'jump':q.type==='❤️'?'heart':'score';powerTimer=600;if(power==='heart')lives=Math.min(5,lives+1);
+ score+=25;beep(990,.12);hud()}}
+ if(powerTimer>0){powerTimer--;if(powerTimer===0)power='none'}
+ if(player.x>1450)checkpointX=1490;
+ for(const cc of coinsList){if(!cc.got&&Math.hypot(player.x+16-cc.x,player.y+20-cc.y)<25){cc.got=true;coins++;score+=5;beep(660);hud()}}
+ if(level<3 && player.x>1000+level*650){level++;score+=50;player.x=70;player.y=430;boss.active=level===3;boss.x=2650;boss.min=2500;boss.max=2850;stars.forEach(s=>s.got=false);coinsList.forEach(c=>c.got=false);powerups.forEach(q=>q.got=false);beep(1040,.15);hud()}
+ if(level===3 && boss.active){
+   boss.x+=boss.v;if(boss.x<boss.min||boss.x>boss.max)boss.v*=-1;
+   if(rect(player,boss)){
+     if(player.vy>0&&player.y+player.h-boss.y<22){bossHp--;player.vy=-9;score+=30;beep(520);if(bossHp<=0){win=true;score+=300;beep(1200,.3)}}
+     else {lives--;player.x=checkpointX;player.y=430;player.vy=0;beep(180);if(lives<=0)gameOver=true;hud()}
+   }
+ }
+ if(player.y>H+50){lives--;hud();player.x=checkpointX;player.y=430;player.vy=0;if(lives<=0)gameOver=true}
+}
+function draw(){
+ let g=x.createLinearGradient(0,0,0,H);g.addColorStop(0,'#65d9ff');g.addColorStop(1,'#d8f7ff');x.fillStyle=g;x.fillRect(0,0,W,H);
+ x.save();x.translate(-cameraX,0);
+ // clouds
+ x.fillStyle='#fff8';[[110,90],[300,130],[700,90],[840,150]].forEach(([a,b])=>{x.beginPath();x.arc(a,b,25,0,7);x.arc(a+28,b-10,34,0,7);x.arc(a+60,b,23,0,7);x.fill()});
+ // hills
+ x.fillStyle='#63b96b';x.beginPath();x.moveTo(0,500);x.quadraticCurveTo(180,330,360,500);x.quadraticCurveTo(560,300,760,500);x.quadraticCurveTo(860,380,960,500);x.fill();
+ for(const p of platforms){x.fillStyle='#8b5a2b';x.fillRect(p.x,p.y,p.w,p.h);x.fillStyle='#4ade80';x.fillRect(p.x,p.y,p.w,7)}
+ for(const s of stars)if(!s.got)circleStar(s);
+ for(const cc of coinsList)if(!cc.got){x.fillStyle='#facc15';x.beginPath();x.arc(cc.x,cc.y,9,0,7);x.fill();x.fillStyle='#a16207';x.font='bold 12px Arial';x.textAlign='center';x.fillText('C',cc.x,cc.y+4)}
+ for(const e of enemies){x.fillStyle='#7c3aed';x.fillRect(e.x,e.y,e.w,e.h);x.fillStyle='#fff';x.fillRect(e.x+6,e.y+8,6,8);x.fillRect(e.x+19,e.y+8,6,8);x.fillStyle='#111';x.fillRect(e.x+8,e.y+10,3,4);x.fillRect(e.x+21,e.y+10,3,4)}
+ if(level===3&&boss.active){x.fillStyle='#dc2626';x.fillRect(boss.x,boss.y,boss.w,boss.h);x.fillStyle='#fff';x.fillRect(boss.x+8,boss.y+12,9,9);x.fillRect(boss.x+31,boss.y+12,9,9);x.fillStyle='#111';x.fillRect(boss.x+10,boss.y+14,4,4);x.fillRect(boss.x+34,boss.y+14,4,4);x.fillStyle='#111';x.fillRect(boss.x+12,boss.y+42,24,6);x.fillStyle='#fff';x.font='bold 14px Arial';x.textAlign='left';x.fillText('HP '+bossHp,boss.x,boss.y-8)}
+ x.fillStyle='#111';x.fillRect(goal.x,goal.y,goal.w,goal.h);x.fillStyle='#ef4444';x.beginPath();x.moveTo(goal.x+12,goal.y);x.lineTo(goal.x+65,goal.y+18);x.lineTo(goal.x+12,goal.y+36);x.fill();
+ for(const q of powerups)if(!q.got){x.font='24px Arial';x.textAlign='center';x.fillText(q.type,q.x,q.y)}
+ for(const b of blocks){x.fillStyle='#f59e0b';x.fillRect(b.x,b.y,b.w,b.h);x.strokeStyle='#92400e';x.strokeRect(b.x,b.y,b.w,b.h);x.fillStyle='#fff';x.font='bold 18px Arial';x.textAlign='center';x.fillText('?',b.x+19,b.y+26)}
+ // player
+ x.fillStyle=colors[character];x.fillRect(player.x,player.y+12,player.w,30);x.fillStyle='#f59e0b';x.fillRect(player.x+5,player.y,22,18);x.fillStyle='#111';x.fillRect(player.x+7,player.y+7,5,5);x.fillRect(player.x+20,player.y+7,5,5);
+ x.restore();
+ if(paused){x.fillStyle='#0009';x.fillRect(0,0,W,H);x.fillStyle='#fff';x.textAlign='center';x.font='bold 46px system-ui';x.fillText('⏸ اللعبة متوقفة',W/2,H/2)}
+ if(win||gameOver){x.fillStyle='#000b';x.fillRect(0,0,W,H);x.textAlign='center';x.fillStyle='#fff';x.font='bold 48px system-ui';x.fillText(win?'🎉 فزت!':'انتهت اللعبة',W/2,H/2-10);x.font='bold 22px system-ui';x.fillText('اضغط إعادة للعب من جديد',W/2,H/2+35)}
+}
+function loop(){update();draw();requestAnimationFrame(loop)} hud();loop();
+addEventListener('keydown',e=>{if(e.key==='ArrowLeft')keys.left=true;if(e.key==='ArrowRight')keys.right=true;if(e.code==='Space'){e.preventDefault();jump=true}});
+addEventListener('keyup',e=>{if(e.key==='ArrowLeft')keys.left=false;if(e.key==='ArrowRight')keys.right=false});
+document.getElementById('restart').onclick=reset;
+document.getElementById('pause').onclick=()=>{paused=!paused;document.getElementById('pause').textContent=paused?'▶':'⏸'};
+document.getElementById('sound').onclick=()=>{muted=!muted;document.getElementById('sound').textContent=muted?'🔇':'🔊'};
+document.querySelectorAll('.char').forEach(b=>b.onclick=()=>{
+ character=b.dataset.char;
+ document.querySelectorAll('.char').forEach(q=>q.style.outline='none');
+ b.style.outline='3px solid #fbbf24';
+});
+document.getElementById('start').onclick=()=>{document.getElementById('menu').style.display='none';reset();beep(740,.12)};
+document.querySelectorAll('.ctrl').forEach(b=>{let k=b.dataset.k;b.addEventListener('pointerdown',e=>{e.preventDefault();if(k==='jump')jump=true;else keys[k]=true});b.addEventListener('pointerup',()=>{if(k!=='jump')keys[k]=false});b.addEventListener('pointerleave',()=>{if(k!=='jump')keys[k]=false})});
+</script>
+</body>
+</html>
